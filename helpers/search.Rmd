@@ -1,0 +1,106 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(cache=TRUE)
+options(scipen = 9999)
+
+if (!require("pacman")) install.packages("pacman")
+```
+
+```{r}
+p_load(recommenderlab)
+p_load(ggplot2)
+p_load(dplyr)
+p_load(data.table)
+p_load(arules)
+p_load(stringr)
+```
+
+```{r}
+#links <- read.csv("links.csv")
+movies <- read.csv("data/movies.csv",stringsAsFactors=FALSE)
+ratings <- read.csv("data/ratings.csv")
+#tags <- read.csv("tags.csv")
+
+library(recommenderlab)
+library(ggplot2)
+```
+
+```{r}
+## Data pre-processing
+genres <- as.data.frame(movies$genres, stringsAsFactors=FALSE)
+library(data.table)
+genres2 <- as.data.frame(tstrsplit(genres[,1], '[|]', 
+                                   type.convert=TRUE), 
+                         stringsAsFactors=FALSE)
+colnames(genres2) <- c(1:10)
+```
+
+```{r}
+genres2$movieId <- movies$movieId
+genres_all <- melt(genres2, id.vars = "movieId") %>%
+  distinct (value)
+genre <- genres_all[1:18,] #remove (no genres listed), NA, IMAX
+write.csv(genre, "helpers/genre.csv")
+```
+
+```{r}
+genre_matrix <- matrix(0,nrow(movies)+1,length(genre)) #empty matrix
+genre_matrix[1,] <- genre #set first row to genre list
+colnames(genre_matrix) <- genre #set column names to genre list
+```
+
+
+```{r}
+#iterate through matrix
+for (i in 1:nrow(genres2)) {
+  for (c in 1:(ncol(genres2)-1)) {
+    genmat_col = which(genre_matrix[1,] == genres2[i,c])
+    genre_matrix[i+1,genmat_col] <- 1
+  }
+}
+```
+
+
+```{r}
+#convert into dataframe
+genre_matrix2 <- as.data.frame(genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (c in 1:ncol(genre_matrix2)) {
+  genre_matrix2[,c] <- as.integer(genre_matrix2[,c])
+} #convert from characters to integers
+```
+
+```{r}
+movies_year <- movies %>%
+  mutate(title = trimws(title),
+         year = as.numeric(str_sub(title, -5,-2)))
+
+#check any NA
+movies_na <- movies_year %>%
+  filter(is.na(year))
+#manually input the years
+movies_na$year <- c(1994,2018,2015,1980,2016,2016,2016,2016,1980,2017,2017,2011)
+```
+
+```{r}
+movies_edit <- cbind(movies_year, genre_matrix2) %>%
+  # mutate(title = str_sub(title, 1, -8)) %>%
+  select(-genres)
+```
+
+```{r}
+#fill NA
+# movies_edit[movies_edit$movieId %in% movies_na$movieId,]$title <- movies_na$title
+movies_edit[movies_edit$movieId %in% movies_na$movieId,]$year <- movies_na$year
+
+#check any NA in year column
+movies_edit %>%
+  filter(is.na(year))
+```
+
+```{r}
+write.csv(movies_edit, "helpers/search.csv")
+```
